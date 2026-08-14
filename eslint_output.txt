@@ -1,0 +1,57 @@
+
+D:\Complete Client\2.Medical_Barcode_Managment\Medical Shop  Project\medical-erp\src\app\page.js
+  33:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  31 |
+  32 |   useEffect(() => {
+> 33 |     fetchDashboardData();
+     |     ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  34 |     const interval = setInterval(() => {
+  35 |       fetchDashboardData(true);
+  36 |     }, 30000);   react-hooks/set-state-in-effect
+
+D:\Complete Client\2.Medical_Barcode_Managment\Medical Shop  Project\medical-erp\src\app\reports\page.js
+   21:5    error  Error: Cannot access variable before it is declared
+
+`fetchReports` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  19 |
+  20 |   useEffect(() => {
+> 21 |     fetchReports();
+     |     ^^^^^^^^^^^^ `fetchReports` accessed before it is declared
+  22 |     const interval = setInterval(() => {
+  23 |       fetchReports(true);
+  24 |     }, 30000);
+
+  26 |   }, []);
+  27 |
+> 28 |   const fetchReports = async (isSilent = false) => {
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |     if (!isSilent) setLoading(true);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |     try {
+     …
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |     if (!isSilent) setLoading(false);
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   };
+     | ^^^^^ `fetchReports` is declared here
+  41 |
+  42 |   const handleRefresh = async () => {
+  43 |     setIsRefreshing(true);  react-hooks/immutability
+   90:117  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react/no-unescaped-entities
+  197:120  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react/no-unescaped-entities
+  452:98   error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react/no-unescaped-entities
+  452:118  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react/no-unescaped-entities
+
+D:\Complete Client\2.Medical_Barcode_Managment\Medical Shop  Project\medical-erp\src\components\dashboard\StatCards.jsx
+  12:103  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+✖ 7 problems (7 errors, 0 warnings)
+

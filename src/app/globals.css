@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* Native App Jaisa Feel Dene Ke Liye CSS */
+html, body {
+  /* Pull-to-refresh disable karega mobile browser me */
+  overscroll-behavior-y: none; 
+  /* Faltu tap highlights hatayega mobile me */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  /* Text selection ko rokenge (Sirf inputs aur textareas me allow karenge) */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Lekin inputs aur forms me text select hona chahiye */
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
