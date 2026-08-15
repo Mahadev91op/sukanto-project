@@ -12,16 +12,13 @@ export default function MedicineHistoryPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
-  // Debounced search for all medicines (including empty/expired stock)
+  // Load initial medicine list on mount and on search changes
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
     const delayDebounce = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const res = await fetch(`/api/medicine?search=${encodeURIComponent(searchQuery)}&includeEmpty=true&limit=15`);
+        const queryParam = searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery)}` : "";
+        const res = await fetch(`/api/medicine?includeEmpty=true&limit=25${queryParam}`);
         const data = await res.json();
         if (data.success) {
           setSearchResults(data.medicines);
@@ -31,7 +28,7 @@ export default function MedicineHistoryPage() {
       } finally {
         setSearchLoading(false);
       }
-    }, 300);
+    }, searchQuery.trim() ? 300 : 0);
 
     return () => clearTimeout(delayDebounce);
   }, [searchQuery]);

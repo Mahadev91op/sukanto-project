@@ -41,22 +41,23 @@ export default function SettingsPage() {
     }
 
     const durationText = thresholdMonths < 12 
-      ? `${thresholdMonths} months` 
-      : `${thresholdMonths / 12} year(s)`;
+      ? `${thresholdMonths} Months` 
+      : `${thresholdMonths / 12} Year(s)`;
 
     const isConfirm = window.confirm(
-      `⚠️ CRITICAL DATABASE CLEANUP WARNING ⚠️\n\n` +
-      `Are you sure you want to delete data older than ${durationText}?\n` +
-      `Only records matching these filters will be deleted:\n` +
-      `${pruneMeds ? "- Out of stock & Expired medicines\n" : ""}` +
-      `${pruneSales ? "- Sales transaction history\n" : ""}` +
-      `This action is irreversible! Do you want to proceed?`
+      `⚠️ DATABASE SELECTIVE CLEANUP ⚠️\n\n` +
+      `Aapne "${durationText}" select kiya hai:\n\n` +
+      `✅ SURAKSHIT (SAFE): Pichhle ${durationText} ka saara active data bilkul SAFE rahega.\n` +
+      `❌ DELETE: Sirf ${durationText} se PURANA (older) data permanently delete hoga:\n` +
+      `${pruneMeds ? "  • Purana Zero-Stock / Expired medicine data\n" : ""}` +
+      `${pruneSales ? "  • Purani sales transaction history\n" : ""}\n` +
+      `Kya aap ye cleanup continue karna chahte hain?`
     );
 
     if (!isConfirm) return;
 
     setPruning(true);
-    const toastId = toast.loading("⏳ Pruning old records...");
+    const toastId = toast.loading(`⏳ Cleaning up records older than ${durationText}...`);
     try {
       const res = await fetch("/api/settings/prune", {
         method: "POST",
@@ -81,19 +82,49 @@ export default function SettingsPage() {
   };
 
   const handleBackup = async () => {
-    const toastId = toast.loading("⏳ Preparing database backup...");
+    const toastId = toast.loading("⏳ Preparing offline database backup...");
     try {
       const res = await fetch("/api/backup");
       const data = await res.json();
       if (data.success) {
-        const jsonString = JSON.stringify(data.backup);
-        const blob = new Blob([jsonString], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
+        const jsonString = JSON.stringify(data.backup, null, 2);
 
         const now = new Date();
         const dateStr = now.toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '_');
         const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
         const filename = `MedicalERP_Backup_${dateStr}_${timeStr}.json`;
+
+        // 1. Native Folder & File Picker (Windows Save As Dialog - 100% Offline)
+        if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+          try {
+            const fileHandle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: "JSON Database Backup (*.json)",
+                  accept: { "application/json": [".json"] }
+                }
+              ]
+            });
+            const writable = await fileHandle.createWritable();
+            await writable.write(jsonString);
+            await writable.close();
+
+            toast.success("✅ Backup saved to your selected location successfully!", { id: toastId, duration: 5000 });
+            return;
+          } catch (pickerErr) {
+            // User cancelled the file picker dialog
+            if (pickerErr.name === "AbortError") {
+              toast.dismiss(toastId);
+              return;
+            }
+            console.warn("Save picker unavailable, falling back to standard download:", pickerErr);
+          }
+        }
+
+        // 2. Standard 100% Offline Fallback
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
 
         const downloadAnchor = document.createElement("a");
         downloadAnchor.setAttribute("href", url);
@@ -103,12 +134,12 @@ export default function SettingsPage() {
         downloadAnchor.remove();
         URL.revokeObjectURL(url);
 
-        toast.success("Backup downloaded successfully!", { id: toastId, duration: 5000 });
+        toast.success("✅ Backup file saved to your device!", { id: toastId, duration: 5000 });
       } else {
         toast.error("Backup failed: " + data.error, { id: toastId });
       }
     } catch (err) {
-      toast.error("Network or connection error during backup.", { id: toastId });
+      toast.error("Offline backup error: " + err.message, { id: toastId });
     }
   };
 
@@ -624,17 +655,34 @@ export default function SettingsPage() {
 
             <form onSubmit={handlePrune} className="space-y-5">
               <div>
-                <label className="block text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Age Threshold (Prune Data Older Than)</label>
+                <label className="block text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Retention Period (Data to Keep Safe)</label>
                 <select
                   value={thresholdMonths}
                   onChange={(e) => setThresholdMonths(Number(e.target.value))}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50 transition-all text-sm font-semibold cursor-pointer"
                 >
-                  <option value={3}>3 Months</option>
-                  <option value={6}>6 Months</option>
-                  <option value={12}>1 Year</option>
-                  <option value={24}>2 Years</option>
+                  <option value={1}>1 Month (Keep last 30 days)</option>
+                  <option value={3}>3 Months (Keep last 90 days)</option>
+                  <option value={6}>6 Months (Keep last 180 days)</option>
+                  <option value={12}>1 Year (Keep last 12 months)</option>
+                  <option value={24}>2 Years (Keep last 24 months)</option>
                 </select>
+              </div>
+
+              {/* Visual Safe vs Delete info box */}
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="flex items-center text-emerald-800 font-bold gap-1.5">
+                  <span>✅ Surakshit (Safe):</span>
+                  <span className="font-semibold text-emerald-700">
+                    Abhi se lekar pichhle {thresholdMonths < 12 ? `${thresholdMonths} Mahine` : `${thresholdMonths / 12} Saal`} ka saara data rahega.
+                  </span>
+                </div>
+                <div className="flex items-center text-rose-700 font-bold gap-1.5">
+                  <span>❌ Delete Hoga:</span>
+                  <span className="font-semibold text-rose-600">
+                    {thresholdMonths < 12 ? `${thresholdMonths} Mahine` : `${thresholdMonths / 12} Saal`} se purana data permanently delete hoga.
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -647,7 +695,9 @@ export default function SettingsPage() {
                   />
                   <div>
                     <span className="text-xs font-bold text-slate-700">Out of Stock & Expired Medicines</span>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Deletes stock entries where quantity is 0 AND expiry date is in the past.</p>
+                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                      Sirf wahi medicines delete hongi jinka stock 0 hai AUR jo {thresholdMonths < 12 ? `${thresholdMonths} Mahine` : `${thresholdMonths / 12} Saal`} se purani hain. Active stock hamesha safe rahega.
+                    </p>
                   </div>
                 </label>
 
@@ -660,7 +710,9 @@ export default function SettingsPage() {
                   />
                   <div>
                     <span className="text-xs font-bold text-slate-700">Sales Transactions History</span>
-                    <p className="text-[10px] text-slate-450 font-semibold mt-0.5">Deletes billing records and sale logs older than the selected age threshold.</p>
+                    <p className="text-[10px] text-slate-450 font-semibold mt-0.5">
+                      Pichhle {thresholdMonths < 12 ? `${thresholdMonths} mahine` : `${thresholdMonths / 12} saal`} ki sales safe rahengi, usse purane sales logs delete honge.
+                    </p>
                   </div>
                 </label>
               </div>
@@ -687,17 +739,24 @@ export default function SettingsPage() {
             {/* Backup Block */}
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-bold text-slate-808 flex items-center gap-2 mb-1">
-                  <Database className="w-5 h-5 text-slate-700" /> Database Offline Backup
-                </h2>
-                <p className="text-xs text-slate-500 font-medium">Download the entire database (distributors, medicines, sales, settings) as a single JSON file. Works completely offline.</p>
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Database className="w-5 h-5 text-emerald-600" /> Database Offline Backup
+                  </h2>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    100% Offline
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium">
+                  Export complete database records (distributors, medicines, sales, printer settings). You can choose any folder on your computer (D: Drive, USB, Desktop) to save the file.
+                </p>
               </div>
 
               <button
                 onClick={handleBackup}
                 className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3 md:py-3.5 rounded-xl font-bold text-xs md:text-sm shadow-lg shadow-slate-800/10 transition-all flex items-center justify-center gap-1.5 focus:outline-none"
               >
-                <FileDown className="w-4 h-4" /> Download Backup File
+                <FileDown className="w-4 h-4 text-emerald-400" /> Choose Location & Save Backup
               </button>
             </div>
 

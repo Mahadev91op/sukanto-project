@@ -3,7 +3,7 @@ import { connectToDatabase } from "@/lib/mongodb";
 import Medicine from "@/models/Medicine";
 import Sale from "@/models/Sale";
 
-export const revalidate = 300; // Cache for 5 minutes — reduces DB load for local use
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
@@ -15,9 +15,8 @@ export async function GET() {
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(0, 0, 0, 0); // 7 din pehle ka start time
+    sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    // Aaj ki date ka start time (aaj ki total kamai nikalne ke liye)
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -47,7 +46,6 @@ export async function GET() {
               .limit(6)
               .lean(), 
               
-      // 🚀 BUG FIX: Timezone hata diya gaya hai. Ab date "YYYY-MM-DD" format me aayegi jo kabhi fail nahi hogi
       Sale.aggregate([
         { $match: { date: { $gte: sevenDaysAgo } } },
         {
@@ -69,15 +67,23 @@ export async function GET() {
     const totalUnits = stockAggregation[0]?.totalUnits || 0;
     const todayRevenue = todaysSales[0]?.todayRevenue || 0;
 
-    // 🚀 BUG FIX: JavaScript ke andar date format ko "05 Mar" jaisa set kar diya graph ke liye
-    const salesData = rawSalesData.map(item => {
-      const dateObj = new Date(item._id);
-      const formattedDate = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-      return {
-        date: formattedDate,
-        Revenue: item.revenue
-      };
+    // Generate continuous 7-day timeline so graph has no gaps
+    const last7DaysMap = new Map();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      last7DaysMap.set(key, { date: label, Revenue: 0 });
+    }
+
+    rawSalesData.forEach(item => {
+      if (last7DaysMap.has(item._id)) {
+        last7DaysMap.get(item._id).Revenue = Math.round(item.revenue || 0);
+      }
     });
+
+    const salesData = Array.from(last7DaysMap.values());
 
     return NextResponse.json({
       success: true,

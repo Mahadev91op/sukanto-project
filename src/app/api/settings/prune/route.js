@@ -18,37 +18,47 @@ export async function POST(req) {
         await connectToDatabase();
         const { thresholdMonths, pruneMedicines, pruneSales } = await req.json();
 
-        if (isNaN(thresholdMonths) || thresholdMonths <= 0) {
+        const months = Number(thresholdMonths);
+        if (isNaN(months) || months <= 0) {
             return NextResponse.json({ success: false, error: "Invalid threshold duration!" }, { status: 400 });
         }
 
         const today = new Date();
-        const thresholdDate = new Date();
-        thresholdDate.setMonth(today.getMonth() - thresholdMonths);
+        const cutoffDate = new Date();
+        cutoffDate.setMonth(today.getMonth() - months);
 
         let deletedMedicinesCount = 0;
         let deletedSalesCount = 0;
 
-        // 1. Prune Medicines: expired AND out of stock
+        // 1. Prune Medicines: Out of Stock (quantity <= 0) AND older than cutoffDate (Last N months data is KEPT SAFE!)
         if (pruneMedicines) {
             const result = await Medicine.deleteMany({
                 quantity: { $lte: 0 },
-                expiryDate: { $lt: today }
+                $or: [
+                    { expiryDate: { $lt: cutoffDate } },
+                    { purchaseDate: { $lt: cutoffDate } },
+                    { createdAt: { $lt: cutoffDate } }
+                ]
             });
             deletedMedicinesCount = result.deletedCount;
         }
 
-        // 2. Prune Sales: transactions older than threshold
+        // 2. Prune Sales: Transactions older than cutoffDate (Last N months data is KEPT SAFE!)
         if (pruneSales) {
             const result = await Sale.deleteMany({
-                date: { $lt: thresholdDate }
+                $or: [
+                    { date: { $lt: cutoffDate } },
+                    { createdAt: { $lt: cutoffDate } }
+                ]
             });
             deletedSalesCount = result.deletedCount;
         }
 
+        const durationText = months < 12 ? `${months} months` : `${months / 12} year(s)`;
+
         return NextResponse.json({
             success: true,
-            message: `🎉 Clean up complete! Deleted ${deletedMedicinesCount} expired/out-of-stock medicines and ${deletedSalesCount} old sales transactions.`
+            message: `🎉 Cleanup complete! Last ${durationText} data is kept safe. Deleted ${deletedSalesCount} older sales records and ${deletedMedicinesCount} older out-of-stock medicine batches.`
         });
 
     } catch (error) {

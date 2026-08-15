@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import Barcode from "react-barcode";
-import { PackagePlus, Loader2, CheckCircle2 } from "lucide-react";
+import { PackagePlus, Loader2, CheckCircle2, ChevronDown, Check, Building2, X, AlertCircle } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast"; 
 import { formatDate } from "@/lib/formatDate";
 
@@ -47,6 +47,20 @@ export default function PurchaseEntry() {
 
   // Distributor states
   const [distributorObjects, setDistributorObjects] = useState([]);
+  const [distributorOpen, setDistributorOpen] = useState(false);
+  const [highlightedDistIndex, setHighlightedDistIndex] = useState(-1);
+  const distributorWrapperRef = useRef(null);
+
+  // Close distributor dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (distributorWrapperRef.current && !distributorWrapperRef.current.contains(event.target)) {
+        setDistributorOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Printer config states
   const [printSettings, setPrintSettings] = useState({
@@ -94,10 +108,10 @@ export default function PurchaseEntry() {
 
   const fetchDistributors = async () => {
     try {
-      const resModal = await fetch("/api/distributors");
+      const resModal = await fetch("/api/distributors?all=true");
       const dataModal = await resModal.json();
       if (dataModal.success) {
-        setDistributorObjects(dataModal.distributors);
+        setDistributorObjects(dataModal.distributors || []);
       }
     } catch (error) {
       console.error("Error fetching distributors:", error);
@@ -145,6 +159,60 @@ export default function PurchaseEntry() {
     if (savedMed) setSavedMed(null);
   };
 
+  const filteredDistributors = distributorObjects.filter(d => 
+    (d.name || "").toLowerCase().includes((formData.distributor || "").toLowerCase().trim())
+  );
+
+  const isExactDistMatch = distributorObjects.some(d => 
+    (d.name || "").toLowerCase().trim() === (formData.distributor || "").toLowerCase().trim()
+  );
+
+  const selectDistributor = (name) => {
+    handleFieldChange("distributor", name);
+    setDistributorOpen(false);
+    setHighlightedDistIndex(-1);
+    submitBtnRef.current?.focus();
+  };
+
+  const handleDistributorKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!distributorOpen) {
+        setDistributorOpen(true);
+        setHighlightedDistIndex(0);
+      } else {
+        setHighlightedDistIndex(prev => 
+          prev < filteredDistributors.length - 1 ? prev + 1 : prev
+        );
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedDistIndex(prev => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === "Enter") {
+      if (distributorOpen && highlightedDistIndex >= 0 && filteredDistributors[highlightedDistIndex]) {
+        e.preventDefault();
+        selectDistributor(filteredDistributors[highlightedDistIndex].name);
+      } else if (isExactDistMatch) {
+        e.preventDefault();
+        const matched = distributorObjects.find(d => 
+          (d.name || "").toLowerCase().trim() === (formData.distributor || "").toLowerCase().trim()
+        );
+        if (matched) {
+          selectDistributor(matched.name);
+        } else {
+          setDistributorOpen(false);
+          submitBtnRef.current?.focus();
+        }
+      } else if (formData.distributor.trim()) {
+        e.preventDefault();
+        toast.error("Please select a registered distributor from the list!");
+        setDistributorOpen(true);
+      }
+    } else if (e.key === "Escape") {
+      setDistributorOpen(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -185,6 +253,14 @@ export default function PurchaseEntry() {
     
     if (eDateObj <= today) {
       toast.error("Expiry date cannot be today or in the past!");
+      return;
+    }
+
+    // Enforce selecting a valid registered distributor
+    if (!formData.distributor.trim() || !isExactDistMatch) {
+      toast.error("Please select a registered distributor from the list!");
+      distributorRef.current?.focus();
+      setDistributorOpen(true);
       return;
     }
 
@@ -338,22 +414,119 @@ export default function PurchaseEntry() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 md:mb-2">Distributor / Agency</label>
-              <select 
-                required 
-                ref={distributorRef}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl md:rounded-2xl px-3 md:px-4 py-2.5 md:py-3 focus:outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all text-sm md:text-base font-medium cursor-pointer"
-                value={formData.distributor} 
-                onChange={(e) => handleFieldChange("distributor", e.target.value)}
-              >
-                <option value="">-- Select Distributor --</option>
-                {distributorObjects.map((dist) => (
-                  <option key={dist._id} value={dist.name}>
-                    {dist.name}
-                  </option>
-                ))}
-              </select>
+            <div ref={distributorWrapperRef} className="relative">
+              <div className="flex justify-between items-center mb-1.5 md:mb-2">
+                <label className="block text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Distributor / Agency <span className="text-rose-500">*</span>
+                </label>
+                {distributorObjects.length > 0 && (
+                  <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                    {distributorObjects.length} Registered
+                  </span>
+                )}
+              </div>
+
+              <div className="relative">
+                <input 
+                  type="text" 
+                  required 
+                  ref={distributorRef}
+                  placeholder="Type or search distributor agency..."
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-xl md:rounded-2xl pl-4 pr-12 py-2.5 md:py-3 focus:outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all text-sm md:text-base font-medium"
+                  value={formData.distributor} 
+                  onFocus={() => setDistributorOpen(true)}
+                  onChange={(e) => {
+                    handleFieldChange("distributor", e.target.value);
+                    setDistributorOpen(true);
+                    setHighlightedDistIndex(-1);
+                  }}
+                  onKeyDown={handleDistributorKeyDown}
+                  autoComplete="off"
+                />
+
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {formData.distributor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFieldChange("distributor", "");
+                        setDistributorOpen(true);
+                        distributorRef.current?.focus();
+                      }}
+                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+                      title="Clear"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDistributorOpen(prev => !prev);
+                      distributorRef.current?.focus();
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+                    title="Toggle list"
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${distributorOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Advanced Suggestions Dropdown */}
+              {distributorOpen && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-150">
+                  {filteredDistributors.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                      <p className="font-bold text-slate-700">No matching registered distributor found.</p>
+                      <p className="text-[10px] text-amber-600 mt-1">
+                        New distributors can only be created from the <strong>Distributors</strong> management tab.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredDistributors.map((dist, idx) => {
+                      const isSelected = (formData.distributor || "").toLowerCase().trim() === (dist.name || "").toLowerCase().trim();
+                      const isHighlighted = idx === highlightedDistIndex;
+
+                      return (
+                        <div
+                          key={dist._id || dist.name}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            selectDistributor(dist.name);
+                          }}
+                          onMouseEnter={() => setHighlightedDistIndex(idx)}
+                          className={`p-3 flex items-center justify-between cursor-pointer transition-colors text-xs ${
+                            isSelected 
+                              ? 'bg-emerald-50 text-emerald-900 font-bold' 
+                              : isHighlighted 
+                                ? 'bg-slate-50 text-slate-900' 
+                                : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <Building2 className={`w-4 h-4 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-slate-400'}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-800 truncate text-xs md:text-sm">{dist.name}</p>
+                              {(dist.contactPerson || dist.phone || dist.gstin) && (
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium mt-0.5 truncate">
+                                  {dist.contactPerson && <span>👤 {dist.contactPerson}</span>}
+                                  {dist.phone && <span>📞 {dist.phone}</span>}
+                                  {dist.gstin && <span>GST: {dist.gstin}</span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0 ml-2" />
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
 
             <button 

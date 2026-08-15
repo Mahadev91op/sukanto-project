@@ -266,25 +266,34 @@ export default function Reports() {
   // Extract all unique distributor names from data
   const allDistributors = data.distributorStock?.map(d => d._id).filter(Boolean) || [];
 
-  // Filter lists client-side based on multi-select selections
+  // Filter lists client-side based on multi-select selections (case-insensitive)
   const getFilteredExpiry = () => {
     if (selectedExpiryDists.length === 0) return data.expiringSoon || [];
-    return (data.expiringSoon || []).filter(med => selectedExpiryDists.includes(med.distributor));
+    return (data.expiringSoon || []).filter(med => {
+      const medDist = (med.distributor || "").toLowerCase().trim();
+      return selectedExpiryDists.some(d => d.toLowerCase().trim() === medDist);
+    });
   };
 
   const getFilteredLowStock = () => {
     if (selectedLowStockDists.length === 0) return data.lowStock || [];
-    return (data.lowStock || []).filter(med => selectedLowStockDists.includes(med.distributor));
+    return (data.lowStock || []).filter(med => {
+      const medDist = (med.distributor || "").toLowerCase().trim();
+      return selectedLowStockDists.some(d => d.toLowerCase().trim() === medDist);
+    });
   };
 
   const getFilteredSoldItems = () => {
     const transactions = data.todayOverview?.transactions || [];
     if (selectedSoldDists.length === 0) return transactions;
-    return transactions.filter(tx => selectedSoldDists.includes(tx.distributor));
+    return transactions.filter(tx => {
+      const txDist = (tx.distributor || "").toLowerCase().trim();
+      return selectedSoldDists.some(d => d.toLowerCase().trim() === txDist);
+    });
   };
 
   const filteredDistributors = data.distributorStock?.filter((dist) =>
-    dist._id?.toLowerCase().includes(distributorSearch.toLowerCase())
+    dist._id?.toLowerCase().includes(distributorSearch.toLowerCase().trim())
   ) || [];
 
   if (loading) {

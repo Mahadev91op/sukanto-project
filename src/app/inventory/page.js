@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   Package, Search, Printer, Edit, Trash2, 
-  Loader2, X, AlertCircle, CheckSquare, Square, RefreshCw
+  Loader2, X, AlertCircle, CheckSquare, Square, RefreshCw,
+  Keyboard, CornerDownLeft
 } from "lucide-react";
 import Barcode from "react-barcode";
 import { useReactToPrint } from "react-to-print";
@@ -23,6 +24,13 @@ export default function Inventory() {
   
   const [activePrintMed, setActivePrintMed] = useState(null);
   const [singlePrintQty, setSinglePrintQty] = useState(1);
+  
+  // Keyboard navigation & focus states
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const searchInputRef = useRef(null);
+  const singleQtyInputRef = useRef(null);
+  const bulkQtyInputsRef = useRef([]);
+  const cardRefs = useRef([]);
   
   const printRef = useRef(null);
   const [printQueue, setPrintQueue] = useState([]); 
@@ -147,6 +155,162 @@ export default function Inventory() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printQueue]);
+
+  // Auto-scroll focused card into view
+  useEffect(() => {
+    if (cardRefs.current[focusedIndex]) {
+      cardRefs.current[focusedIndex]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+    }
+  }, [focusedIndex]);
+
+  // Focus single print modal quantity input when modal opens
+  useEffect(() => {
+    if (activePrintMed) {
+      setTimeout(() => {
+        singleQtyInputRef.current?.focus();
+        singleQtyInputRef.current?.select();
+      }, 50);
+    }
+  }, [activePrintMed]);
+
+  // Focus first input in bulk print modal when modal opens
+  useEffect(() => {
+    if (showBulkModal) {
+      setTimeout(() => {
+        bulkQtyInputsRef.current[0]?.focus();
+        bulkQtyInputsRef.current[0]?.select();
+      }, 50);
+    }
+  }, [showBulkModal]);
+
+  // Global Keyboard Shortcuts Handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 1. Single Print Modal
+      if (activePrintMed) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setActivePrintMed(null);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          confirmSinglePrint();
+        }
+        return;
+      }
+
+      // 2. Bulk Print Modal
+      if (showBulkModal) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowBulkModal(false);
+        } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey || document.activeElement?.tagName !== "INPUT")) {
+          e.preventDefault();
+          generateBulkQueue();
+        }
+        return;
+      }
+
+      // 3. Edit Modal
+      if (editMed) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setEditMed(null);
+        }
+        return;
+      }
+
+      // 4. Focus Search bar with '/' or 'F2'
+      if ((e.key === "/" || e.key === "F2") && document.activeElement !== searchInputRef.current) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      // If user is currently typing in search input
+      if (document.activeElement === searchInputRef.current) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSearchTerm("");
+          searchInputRef.current?.blur();
+        } else if (e.key === "ArrowDown" || e.key === "Enter") {
+          if (medicines.length > 0) {
+            e.preventDefault();
+            searchInputRef.current?.blur();
+            setFocusedIndex(0);
+          }
+        }
+        return;
+      }
+
+      // 5. Grid Navigation when browsing inventory
+      if (medicines.length === 0) return;
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setFocusedIndex(prev => (prev < medicines.length - 1 ? prev + 1 : prev));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setFocusedIndex(prev => (prev > 0 ? prev - 1 : 0));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusedIndex(prev => Math.min(medicines.length - 1, prev + 3));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (focusedIndex < 3) {
+          searchInputRef.current?.focus();
+        } else {
+          setFocusedIndex(prev => Math.max(0, prev - 3));
+        }
+      } else if (e.key === "p" || e.key === "P" || e.key === "Enter") {
+        // Quick Print single label
+        e.preventDefault();
+        if (medicines[focusedIndex]) {
+          handleSinglePrint(medicines[focusedIndex]);
+        }
+      } else if (e.key === " " || e.key === "x" || e.key === "X") {
+        // Space / X to toggle selection
+        e.preventDefault();
+        if (medicines[focusedIndex]) {
+          toggleSelection(medicines[focusedIndex]._id);
+        }
+      } else if (e.key === "e" || e.key === "E") {
+        // E to Edit
+        e.preventDefault();
+        if (medicines[focusedIndex]) {
+          setEditMed(medicines[focusedIndex]);
+        }
+      } else if (e.key === "Delete") {
+        // Delete
+        e.preventDefault();
+        if (medicines[focusedIndex]) {
+          handleDelete(medicines[focusedIndex]._id);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        // Ctrl+P for Bulk Print if items selected
+        e.preventDefault();
+        if (selectedMeds.length > 0) {
+          setShowBulkModal(true);
+        } else if (medicines[focusedIndex]) {
+          handleSinglePrint(medicines[focusedIndex]);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        // Ctrl+A to select all
+        e.preventDefault();
+        if (selectedMeds.length === medicines.length) {
+          setSelectedMeds([]);
+        } else {
+          setSelectedMeds(medicines.map(m => m._id));
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [medicines, focusedIndex, activePrintMed, showBulkModal, editMed, selectedMeds, singlePrintQty]);
 
   const handleDelete = async (id) => {
     if (!confirm("Are you sure you want to delete this entry?")) return;
@@ -302,6 +466,7 @@ export default function Inventory() {
 
           <div className="relative w-full sm:w-80 group">
             <input 
+              ref={searchInputRef}
               type="text" 
               placeholder="Search Name, Location or Barcode..." 
               className="w-full bg-white border border-slate-200 text-slate-700 rounded-xl md:rounded-2xl pl-10 md:pl-12 pr-4 py-3 md:py-3.5 focus:outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-50 transition-all text-sm md:text-base font-medium shadow-sm"
@@ -321,17 +486,33 @@ export default function Inventory() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {medicines.map((med) => {
+          {medicines.map((med, index) => {
             const isSelected = selectedMeds.includes(med._id);
+            const isFocused = focusedIndex === index;
             return (
               <div 
                 key={med._id} 
-                className={`bg-white rounded-2xl md:rounded-3xl border shadow-[0_2px_15px_-3px_rgba(0,0,0,0.03)] hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-300 overflow-hidden group ${isSelected ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-slate-200'}`}
+                ref={(el) => (cardRefs.current[index] = el)}
+                onClick={() => setFocusedIndex(index)}
+                className={`bg-white rounded-2xl md:rounded-3xl border shadow-[0_2px_15px_-3px_rgba(0,0,0,0.03)] transition-all duration-200 overflow-hidden group cursor-pointer ${
+                  isFocused 
+                    ? 'ring-4 ring-emerald-500/50 border-emerald-500 shadow-2xl scale-[1.01]' 
+                    : isSelected 
+                      ? 'border-emerald-400 ring-2 ring-emerald-50' 
+                      : 'border-slate-200 hover:border-slate-300'
+                }`}
               >
                 <div className="p-4 md:p-6">
+                  {isFocused && (
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="bg-emerald-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        Focused • Press [P] or [Enter] to Print
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-start gap-4 mb-3 md:mb-4">
                     <div className="flex items-start gap-2.5 md:gap-3 flex-1 min-w-0">
-                      <button onClick={() => toggleSelection(med._id)} className="mt-0.5 md:mt-1 focus:outline-none shrink-0">
+                      <button onClick={(e) => { e.stopPropagation(); toggleSelection(med._id); }} className="mt-0.5 md:mt-1 focus:outline-none shrink-0">
                         {isSelected ? 
                           <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-500" /> : 
                           <Square className="w-4 h-4 md:w-5 md:h-5 text-slate-300 hover:text-emerald-400 transition-colors" />
@@ -345,14 +526,16 @@ export default function Inventory() {
                     
                     <div className="flex space-x-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                       <button 
-                        onClick={() => setEditMed(med)}
+                        onClick={(e) => { e.stopPropagation(); setEditMed(med); }}
                         className="p-1.5 md:p-2 bg-slate-50 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg md:rounded-xl transition-colors"
+                        title="Edit [E]"
                       >
                         <Edit className="w-3.5 h-3.5 md:w-4 md:h-4" />
                       </button>
                       <button 
-                        onClick={() => handleDelete(med._id)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(med._id); }}
                         className="p-1.5 md:p-2 bg-slate-50 text-slate-600 hover:bg-rose-50 hover:text-rose-600 rounded-lg md:rounded-xl transition-colors"
+                        title="Delete [Del]"
                       >
                         <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                       </button>
@@ -413,10 +596,18 @@ export default function Inventory() {
 
                   <div className="pt-3 md:pt-4 border-t border-slate-50 flex flex-col items-center">
                     <button 
-                      onClick={() => handleSinglePrint(med)} 
-                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold flex items-center justify-center transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSinglePrint(med);
+                      }} 
+                      className={`w-full py-2.5 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-bold flex items-center justify-center transition-all ${
+                        isFocused 
+                          ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
                     >
-                      <Printer className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1.5 md:mr-2" /> Print Single Label
+                      <Printer className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1.5 md:mr-2" /> Print Single Label 
+                      <kbd className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-extrabold ${isFocused ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'}`}>P</kbd>
                     </button>
                   </div>
                 </div>
@@ -440,9 +631,14 @@ export default function Inventory() {
             </div>
             
             <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-50">
-              <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 md:mb-4">Set Copies for Each Medicine</p>
+              <div className="flex items-center justify-between mb-3 md:mb-4">
+                <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Set Copies for Each Medicine</p>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                  {selectedMeds.length} Selected
+                </span>
+              </div>
               <div className="space-y-2.5 md:space-y-3">
-                {selectedMeds.map(id => {
+                {selectedMeds.map((id, idx) => {
                   const med = medicines.find(m => m._id === id);
                   if (!med) return null;
                   return (
@@ -454,10 +650,28 @@ export default function Inventory() {
                       <div className="flex items-center space-x-1.5 md:space-x-2 shrink-0">
                         <label className="text-[10px] md:text-xs font-bold text-slate-400">Copies:</label>
                         <input 
+                          ref={(el) => (bulkQtyInputsRef.current[idx] = el)}
                           type="number" min="1" max="100"
-                          className="w-12 md:w-16 bg-slate-50 border border-slate-200 px-1 md:px-2 py-1 md:py-1.5 rounded-lg text-center text-xs md:text-sm font-bold outline-none focus:border-emerald-400"
+                          className="w-14 md:w-16 bg-slate-50 border-2 border-slate-200 px-1 md:px-2 py-1 md:py-1.5 rounded-lg text-center text-xs md:text-sm font-bold outline-none focus:border-emerald-500 focus:bg-white transition-colors"
                           value={printCopies[id] || 1}
                           onChange={(e) => setPrintCopies({...printCopies, [id]: parseInt(e.target.value) || 1})}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              generateBulkQueue();
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              bulkQtyInputsRef.current[idx + 1]?.focus();
+                              bulkQtyInputsRef.current[idx + 1]?.select();
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              bulkQtyInputsRef.current[idx - 1]?.focus();
+                              bulkQtyInputsRef.current[idx - 1]?.select();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              setShowBulkModal(false);
+                            }
+                          }}
                         />
                       </div>
                     </div>
@@ -466,18 +680,21 @@ export default function Inventory() {
               </div>
             </div>
 
-            <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex gap-3 md:gap-4">
+            <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex items-center gap-3 md:gap-4">
+              <span className="text-[10px] font-bold text-slate-400 hidden sm:flex items-center gap-1 mr-auto">
+                <CornerDownLeft className="w-3 h-3" /> [Enter] Print All | [Esc] Cancel
+              </span>
               <button 
                 onClick={() => setShowBulkModal(false)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 md:py-3.5 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all"
+                className="flex-1 sm:flex-initial px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 md:py-3.5 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all"
               >
-                Cancel
+                Cancel [Esc]
               </button>
               <button 
                 onClick={generateBulkQueue}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 md:py-3.5 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center"
+                className="flex-1 sm:flex-initial px-6 bg-emerald-500 hover:bg-emerald-600 text-white py-3 md:py-3.5 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-4 h-4 mr-1.5 md:mr-2" /> Start Print
+                <Printer className="w-4 h-4" /> Start Print [Enter]
               </button>
             </div>
           </div>
@@ -570,12 +787,22 @@ export default function Inventory() {
                   -
                 </button>
                 <input 
+                  ref={singleQtyInputRef}
                   type="number"
                   min="1"
                   max="100"
-                  className="w-20 bg-white border border-slate-200 p-2 rounded-xl text-center font-extrabold text-sm md:text-base text-slate-800 outline-none focus:border-emerald-500 shadow-sm"
+                  className="w-20 bg-white border-2 border-emerald-400 p-2 rounded-xl text-center font-extrabold text-sm md:text-base text-slate-800 outline-none focus:ring-4 focus:ring-emerald-100 shadow-sm"
                   value={singlePrintQty}
                   onChange={(e) => setSinglePrintQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmSinglePrint();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setActivePrintMed(null);
+                    }
+                  }}
                 />
                 <button 
                   type="button"
@@ -586,9 +813,14 @@ export default function Inventory() {
                 </button>
               </div>
               
-              <p className="text-[10px] text-slate-450 font-semibold">
-                Will render in {printSettings.layoutType} layout using saved configuration.
-              </p>
+              <div className="space-y-1">
+                <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 py-1 px-3 rounded-full border border-emerald-100 inline-flex items-center gap-1 shadow-sm">
+                  <CornerDownLeft className="w-3 h-3" /> Press [Enter] to Print | [Esc] Cancel
+                </p>
+                <p className="text-[10px] text-slate-400 font-semibold">
+                  Layout: {printSettings.layoutType} ({printSettings.width}x{printSettings.height}mm)
+                </p>
+              </div>
             </div>
 
             <div className="p-4 md:p-6 bg-white border-t border-slate-200 flex gap-3">
@@ -596,13 +828,13 @@ export default function Inventory() {
                 onClick={() => setActivePrintMed(null)}
                 className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl text-xs font-bold transition-all"
               >
-                Cancel
+                Cancel [Esc]
               </button>
               <button 
                 onClick={confirmSinglePrint}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-1.5"
               >
-                <Printer className="w-3.5 h-3.5" /> Start Print
+                <Printer className="w-3.5 h-3.5" /> Start Print [Enter]
               </button>
             </div>
           </div>

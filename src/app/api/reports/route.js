@@ -2,8 +2,19 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import Medicine from "@/models/Medicine";
 import Sale from "@/models/Sale";
+import Distributor from "@/models/Distributor";
 
 export const dynamic = 'force-dynamic'; 
+
+function normalizeName(name) {
+  if (!name) return "";
+  return name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 export async function GET(req) {
   try {
@@ -46,6 +57,7 @@ export async function GET(req) {
       lowStock,
       distributorStock,
       distributorPerformance,
+      registeredDistributors,
       todaysSales
     ] = await Promise.all([
       Medicine.find({
@@ -68,7 +80,7 @@ export async function GET(req) {
       ]),
 
       Sale.aggregate([
-        { $match: { date: { $gte: new Date(new Date().setDate(new Date().getDate() - 30)) } } }, // 🚀 SPEED OPTIMIZATION: Limit to 30 days
+        { $match: { date: { $gte: new Date(new Date().setDate(new Date().getDate() - 365)) } } }, // Past 365 days for distributor metrics
         { $unwind: "$items" },
         {
           $lookup: {
@@ -88,37 +100,82 @@ export async function GET(req) {
         }
       ]),
 
+      Distributor.find({}).lean(),
+
       Sale.find({
         date: { $gte: startOfToday, $lte: endOfToday }
       }).lean() 
     ]);
 
-    // Fetch medicine details for sold items to get their distributor & batch (location)
-    const medicineIds = [];
-    todaysSales.forEach(sale => {
-      sale.items.forEach(item => {
-        if (item.medicineId) {
-          medicineIds.push(item.medicineId);
-        }
-      });
+    // Unified distributor map merging registered distributors, medicine stock, and sales
+    const mergedDistributorMap = new Map();
+
+    // 1. Add all registered distributors
+    registeredDistributors.forEach(dist => {
+      if (dist.name) {
+        const norm = normalizeName(dist.name);
+        const key = norm.toLowerCase();
+        mergedDistributorMap.set(key, {
+          _id: norm,
+          totalQuantity: 0,
+          totalItems: 0,
+          soldQuantity: 0,
+          revenueGenerated: 0,
+          phone: dist.phone || "",
+          gstin: dist.gstin || "",
+          contactPerson: dist.contactPerson || ""
+        });
+      }
     });
 
-    const medicineDetailsList = await Medicine.find({ _id: { $in: medicineIds } }).select("distributor batch").lean();
+    // 2. Merge stock data from medicines
+    distributorStock.forEach(stock => {
+      if (stock._id) {
+        const norm = normalizeName(stock._id);
+        const key = norm.toLowerCase();
+        const existing = mergedDistributorMap.get(key) || {
+          _id: norm,
+          totalQuantity: 0,
+          totalItems: 0,
+          soldQuantity: 0,
+          revenueGenerated: 0
+        };
+        existing.totalQuantity += (stock.totalQuantity || 0);
+        existing.totalItems += (stock.totalItems || 0);
+        mergedDistributorMap.set(key, existing);
+      }
+    });
+
+    // 3. Merge sales performance
+    distributorPerformance.forEach(perf => {
+      if (perf._id) {
+        const norm = normalizeName(perf._id);
+        const key = norm.toLowerCase();
+        const existing = mergedDistributorMap.get(key) || {
+          _id: norm,
+          totalQuantity: 0,
+          totalItems: 0,
+          soldQuantity: 0,
+          revenueGenerated: 0
+        };
+        existing.soldQuantity += (perf.soldQuantity || 0);
+        existing.revenueGenerated += (perf.revenueGenerated || 0);
+        mergedDistributorMap.set(key, existing);
+      }
+    });
+
+    const completeDistributorData = Array.from(mergedDistributorMap.values())
+      .sort((a, b) => (b.revenueGenerated || 0) - (a.revenueGenerated || 0) || (b.totalQuantity || 0) - (a.totalQuantity || 0));
+
+    // Fetch medicine details map (distributor, batch) for all items in the period's sales
+    const medicineIds = [...new Set(todaysSales.flatMap(s => s.items.map(i => i.medicineId)).filter(Boolean))];
+    const medicineDocs = medicineIds.length > 0
+      ? await Medicine.find({ _id: { $in: medicineIds } }).select("distributor batch").lean()
+      : [];
     const medicineDetailsMap = {};
-    medicineDetailsList.forEach(m => {
+    medicineDocs.forEach(m => {
       medicineDetailsMap[m._id.toString()] = m;
     });
-
-    const completeDistributorData = distributorStock.map(stock => {
-      const perf = distributorPerformance.find(p => p._id === stock._id);
-      return {
-        _id: stock._id,
-        totalQuantity: stock.totalQuantity,
-        totalItems: stock.totalItems,
-        soldQuantity: perf ? perf.soldQuantity : 0,
-        revenueGenerated: perf ? perf.revenueGenerated : 0
-      };
-    }).sort((a, b) => b.revenueGenerated - a.revenueGenerated);
 
     let todayRevenue = 0;
     let todayItemsSold = 0;
