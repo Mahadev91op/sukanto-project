@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import Barcode from "react-barcode";
+import UpdateLoadingModal from "@/components/settings/UpdateLoadingModal";
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -58,8 +59,10 @@ export default function SettingsPage() {
   // Remote Update States
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updatingSystem, setUpdatingSystem] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [lastCheckedTime, setLastCheckedTime] = useState(null);
+
 
 
   const handlePrune = async (e) => {
@@ -260,26 +263,24 @@ export default function SettingsPage() {
     if (!isConfirm) return;
 
     setUpdatingSystem(true);
-    const toastId = toast.loading("⏳ Downloading & applying update from GitHub... Please wait...");
+    setUpdateSuccess(false);
     try {
       const res = await fetch("/api/settings/update", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        toast.success(data.message || "✅ System updated successfully!", { id: toastId, duration: 8000 });
-        await handleCheckUpdate(true);
-        alert(
-          "🎉 UPDATE COMPLETE!\n\n" +
-          "Software successfully update ho chuka hai.\n" +
-          "Naye features activate karne ke liye page reload ho raha hai."
-        );
-        window.location.reload();
+        setUpdateSuccess(true);
+        toast.success(data.message || "✅ System updated successfully!", { duration: 6000 });
+        // Smooth delay so the client sees the 100% Complete checkmark animation
+        setTimeout(() => {
+          window.location.reload();
+        }, 2200);
       } else {
-        toast.error("Update failed: " + data.error, { id: toastId, duration: 6000 });
+        setUpdatingSystem(false);
+        toast.error("Update failed: " + (data.error || "Unknown error"), { duration: 6000 });
       }
     } catch (err) {
-      toast.error("Update error: " + err.message, { id: toastId });
-    } finally {
       setUpdatingSystem(false);
+      toast.error("Update error: " + err.message);
     }
   };
 
@@ -288,6 +289,7 @@ export default function SettingsPage() {
       handleCheckUpdate(true);
     }
   }, [activeTab]);
+
 
   const loadSettings = async () => {
     try {
@@ -377,6 +379,13 @@ export default function SettingsPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12">
       <Toaster position="top-center" />
+
+      {/* Cloud Update Animated Fullscreen Modal */}
+      <UpdateLoadingModal 
+        isUpdating={updatingSystem} 
+        isSuccess={updateSuccess} 
+        newVersionInfo={updateInfo?.latestVersion} 
+      />
 
       {/* Header */}
       <div className="flex items-center">
