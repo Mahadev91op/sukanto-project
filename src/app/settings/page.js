@@ -1,6 +1,28 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Settings, Printer, Check, Loader2, RotateCcw, AlertTriangle, Database, Trash2, FileDown, FileUp } from "lucide-react";
+import { 
+  Settings, 
+  Printer, 
+  Check, 
+  Loader2, 
+  RotateCcw, 
+  AlertTriangle, 
+  Database, 
+  Trash2, 
+  FileDown, 
+  FileUp,
+  CloudDownload,
+  RefreshCw,
+  ShieldCheck,
+  GitBranch,
+  ArrowUpCircle,
+  Sparkles,
+  Clock,
+  Globe,
+  CheckCircle2,
+  HelpCircle,
+  ShieldAlert
+} from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import Barcode from "react-barcode";
 
@@ -32,6 +54,13 @@ export default function SettingsPage() {
   const [pruning, setPruning] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [selectedBackupFile, setSelectedBackupFile] = useState(null);
+
+  // Remote Update States
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updatingSystem, setUpdatingSystem] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [lastCheckedTime, setLastCheckedTime] = useState(null);
+
 
   const handlePrune = async (e) => {
     e.preventDefault();
@@ -193,6 +222,73 @@ export default function SettingsPage() {
     }
   };
 
+  const handleCheckUpdate = async (silent = false) => {
+    setCheckingUpdate(true);
+    const toastId = !silent ? toast.loading("🔍 Checking for updates on GitHub...") : null;
+    try {
+      const res = await fetch("/api/settings/update");
+      const data = await res.json();
+      if (data.success) {
+        setUpdateInfo(data);
+        setLastCheckedTime(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        if (!silent) {
+          if (!data.isOnline) {
+            toast.error(data.errorNotice || "Offline / GitHub se connect nahi ho pa raha hai.", { id: toastId });
+          } else if (data.isUpToDate) {
+            toast.success("✅ Aapka software already latest version par hai!", { id: toastId, duration: 4000 });
+          } else {
+            toast.success(`🎉 Naya Update Available Hai! (${data.commitsBehind} naye changes)`, { id: toastId, duration: 5000 });
+          }
+        }
+      } else {
+        if (!silent) toast.error("Failed to check updates: " + (data.error || "Unknown error"), { id: toastId });
+      }
+    } catch (err) {
+      if (!silent) toast.error("Network error while checking updates.", { id: toastId });
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    const isConfirm = window.confirm(
+      "🚀 SYSTEM UPDATE CONFIRMATION 🚀\n\n" +
+      "✅ 100% DATABASE SAFE: Aapka database (medicines stock, bills, sales records) bilkul safe rahega.\n" +
+      "📦 Sirf naya program code GitHub se download hokar update hoga.\n\n" +
+      "Kya aap abhi software update karna chahte hain?"
+    );
+    if (!isConfirm) return;
+
+    setUpdatingSystem(true);
+    const toastId = toast.loading("⏳ Downloading & applying update from GitHub... Please wait...");
+    try {
+      const res = await fetch("/api/settings/update", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || "✅ System updated successfully!", { id: toastId, duration: 8000 });
+        await handleCheckUpdate(true);
+        alert(
+          "🎉 UPDATE COMPLETE!\n\n" +
+          "Software successfully update ho chuka hai.\n" +
+          "Naye features activate karne ke liye page reload ho raha hai."
+        );
+        window.location.reload();
+      } else {
+        toast.error("Update failed: " + data.error, { id: toastId, duration: 6000 });
+      }
+    } catch (err) {
+      toast.error("Update error: " + err.message, { id: toastId });
+    } finally {
+      setUpdatingSystem(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "update" && !updateInfo && !checkingUpdate) {
+      handleCheckUpdate(true);
+    }
+  }, [activeTab]);
+
   const loadSettings = async () => {
     try {
       const res = await fetch("/api/settings");
@@ -220,6 +316,7 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -284,40 +381,67 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex items-center">
         <div className="w-10 h-10 md:w-12 md:h-12 bg-emerald-50 text-emerald-600 rounded-xl md:rounded-2xl flex items-center justify-center mr-3 md:mr-4 border border-emerald-100 shrink-0">
-          <Settings className="w-5 h-5 md:w-6 md:h-6" />
+          {activeTab === "barcode" && <Printer className="w-5 h-5 md:w-6 md:h-6" />}
+          {activeTab === "data" && <Database className="w-5 h-5 md:w-6 md:h-6" />}
+          {activeTab === "update" && <CloudDownload className="w-5 h-5 md:w-6 md:h-6" />}
         </div>
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">Printing Profiles & Barcode Settings</h1>
-          <p className="text-slate-500 text-[10px] md:text-sm font-medium mt-0.5">Customize layouts (1-UP/2-UP), paper sizes, and calibration options with a live preview.</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">
+            {activeTab === "barcode" && "Printing Profiles & Barcode Settings"}
+            {activeTab === "data" && "Database Maintenance & Backup Tools"}
+            {activeTab === "update" && "Remote Cloud Software Update"}
+          </h1>
+          <p className="text-slate-500 text-[10px] md:text-sm font-medium mt-0.5">
+            {activeTab === "barcode" && "Customize layouts (1-UP/2-UP), paper sizes, and calibration options with a live preview."}
+            {activeTab === "data" && "Safely export offline JSON backups, restore database, or prune old expired records."}
+            {activeTab === "update" && "Ghar baithe 1-click me naya code update karein. Database aur records 100% surakshit rahenge."}
+          </p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-6 mb-6">
+      <div className="flex border-b border-slate-200 gap-4 md:gap-6 mb-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab("barcode")}
-          className={`pb-3 text-xs md:text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${
+          className={`pb-3 text-xs md:text-sm font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 flex items-center gap-1.5 ${
             activeTab === "barcode"
               ? "border-emerald-500 text-emerald-600"
-              : "border-transparent text-slate-450 hover:text-slate-600"
+              : "border-transparent text-slate-400 hover:text-slate-600"
           }`}
         >
+          <Printer className="w-4 h-4" />
           Barcode & Printing
         </button>
         <button
           onClick={() => setActiveTab("data")}
-          className={`pb-3 text-xs md:text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${
+          className={`pb-3 text-xs md:text-sm font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 flex items-center gap-1.5 ${
             activeTab === "data"
               ? "border-emerald-500 text-emerald-600"
-              : "border-transparent text-slate-450 hover:text-slate-600"
+              : "border-transparent text-slate-400 hover:text-slate-600"
           }`}
         >
+          <Database className="w-4 h-4" />
           Data & Database Tools
+        </button>
+        <button
+          onClick={() => setActiveTab("update")}
+          className={`pb-3 text-xs md:text-sm font-bold uppercase tracking-wider border-b-2 transition-all shrink-0 flex items-center gap-1.5 relative ${
+            activeTab === "update"
+              ? "border-emerald-500 text-emerald-600"
+              : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          <CloudDownload className="w-4 h-4" />
+          Software Remote Update
+          {updateInfo && !updateInfo.isUpToDate && (
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block ml-1"></span>
+          )}
         </button>
       </div>
 
-      {activeTab === "barcode" ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {activeTab === "barcode" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-300">
+
         
         {/* Left Side: Form Controls */}
         <form onSubmit={handleSave} className="lg:col-span-5 bg-white p-6 rounded-[24px] border border-slate-200 shadow-[0_4px_20px_-3px_rgba(0,0,0,0.05)] space-y-5 h-fit">
@@ -641,7 +765,10 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-      ) : (
+      )}
+
+      {/* 2. Data & Database Tools Tab */}
+      {activeTab === "data" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 animate-in fade-in duration-300">
           
           {/* Left Side: Pruning/Cleanup */}
@@ -800,6 +927,262 @@ export default function SettingsPage() {
           
         </div>
       )}
+
+      {/* 3. Software Remote Update Tab */}
+      {activeTab === "update" && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* Safety Guarantee Banner */}
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200/90 rounded-[24px] p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/20">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-extrabold text-slate-800">100% Database & Stock Safe Guarantee</h3>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Zero Data Loss
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                Software update sirf GitHub se naya application code (UI screens, speed enhancements, naye features) download karta hai.
+                Aapke <strong>MongoDB Database, Dawaiyon ka Stock, Distributor Records, aur Pichhle Sales Bills</strong> ko KABHI bhi delete ya modify nahi kiya jata.
+              </p>
+            </div>
+          </div>
+
+          {/* Update Action & Status Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Left Side: System & Branch Information */}
+            <div className="lg:col-span-5 bg-white p-6 md:p-8 rounded-[24px] border border-slate-200 shadow-[0_4px_20px_-3px_rgba(0,0,0,0.05)] space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-emerald-500" /> System Version & Repository
+                </h3>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Cloud Repository</span>
+                    <span className="font-bold text-slate-700 font-mono text-[11px] truncate max-w-[200px]">Mahadev91op/sukanto-project</span>
+                  </div>
+
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Active Branch</span>
+                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      main
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Installed Commit Hash</span>
+                    <span className="font-extrabold text-slate-800 font-mono bg-slate-200/70 px-2 py-0.5 rounded">
+                      {updateInfo?.currentVersion?.hash || "571ad11"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Installed Date</span>
+                    <span className="font-bold text-slate-600">
+                      {updateInfo?.currentVersion?.date || "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {updateInfo?.currentVersion?.message && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Last Installed Update</span>
+                    <p className="font-semibold text-slate-700 text-xs italic">
+                      &quot;{updateInfo.currentVersion.message}&quot;
+                    </p>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => handleCheckUpdate(false)}
+                    disabled={checkingUpdate || updatingSystem}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 focus:outline-none disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-emerald-600 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                    {checkingUpdate ? "Checking GitHub..." : "Check for Updates Now"}
+                  </button>
+                  {lastCheckedTime && (
+                    <p className="text-[10px] text-slate-400 text-center mt-2 font-medium">
+                      Last checked at: {lastCheckedTime}
+                    </p>
+                  )}
+                </div>
+
+              </div>
+            </div>
+
+            {/* Right Side: Update Action Panel */}
+            <div className="lg:col-span-7 bg-white p-6 md:p-8 rounded-[24px] border border-slate-200 shadow-[0_4px_20px_-3px_rgba(0,0,0,0.05)] space-y-6 flex flex-col justify-between">
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <CloudDownload className="w-4 h-4 text-emerald-500" /> Cloud Sync & Update Status
+                  </h3>
+                  {updateInfo && (
+                    <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${
+                      !updateInfo.isOnline
+                        ? 'bg-rose-50 text-rose-600 border-rose-200'
+                        : updateInfo.isUpToDate
+                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        : 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse'
+                    }`}>
+                      {!updateInfo.isOnline ? 'Offline' : updateInfo.isUpToDate ? 'Up to Date' : 'Update Available'}
+                    </span>
+                  )}
+                </div>
+
+                {checkingUpdate ? (
+                  <div className="p-8 text-center space-y-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto" />
+                    <p className="font-bold text-slate-700 text-sm">GitHub repository scan kiya ja raha hai...</p>
+                    <p className="text-xs text-slate-400">Pata lagaya ja raha hai ki koi naya update available hai ya nahi.</p>
+                  </div>
+                ) : updateInfo && !updateInfo.isOnline ? (
+                  <div className="p-6 bg-rose-50/70 border border-rose-200 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                      <AlertTriangle className="w-5 h-5 text-rose-600" />
+                      GitHub se connection nahi ho saka
+                    </div>
+                    <p className="text-xs text-rose-700 font-medium">
+                      {updateInfo.errorNotice || "Kripya check karein ki aapka computer internet se connected hai."}
+                    </p>
+                  </div>
+                ) : updateInfo && !updateInfo.isUpToDate ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-amber-900 text-sm flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-amber-600" /> Naya Update Taiyar Hai!
+                        </span>
+                        <span className="text-xs font-black bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full">
+                          {updateInfo.commitsBehind} New Release(s)
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800 font-medium">
+                        Developer ne GitHub par naye features/updates push kar diye hain. Neeche diye gaye button par click karke aap turant install kar sakte hain.
+                      </p>
+                    </div>
+
+                    {updateInfo.pendingUpdates && updateInfo.pendingUpdates.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Naye Features / Changes</span>
+                        <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
+                          {updateInfo.pendingUpdates.map((commit, idx) => (
+                            <div key={idx} className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/70 text-xs transition-colors">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="font-mono font-bold text-emerald-700 text-[11px]">#{commit.hash}</span>
+                                <span className="text-[10px] text-slate-400 font-semibold">{commit.date}</span>
+                              </div>
+                              <p className="font-bold text-slate-700">{commit.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center space-y-3 bg-emerald-50/40 border border-emerald-100 rounded-2xl">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-extrabold text-slate-800 text-sm">Aapka System Latest Version Par Hai!</p>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto font-medium">
+                        Aapke ERP me sabhi latest features aur security patches already updated hain. Jab bhi naya update aayega, yahan show ho jayega.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Main Action Button */}
+              <div className="pt-4 border-t border-slate-100">
+                {updateInfo && !updateInfo.isUpToDate && updateInfo.isOnline ? (
+                  <button
+                    onClick={handleApplyUpdate}
+                    disabled={updatingSystem}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] text-white py-3.5 md:py-4 rounded-xl font-extrabold text-sm md:text-base shadow-xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 focus:outline-none disabled:opacity-50"
+                  >
+                    {updatingSystem ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Downloading & Updating System...
+                      </>
+                    ) : (
+                      <>
+                        <CloudDownload className="w-5 h-5" />
+                        Download & Install Update (1-Click)
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleApplyUpdate}
+                    disabled={updatingSystem}
+                    className="w-full bg-slate-800 hover:bg-slate-900 active:scale-[0.99] text-white py-3 md:py-3.5 rounded-xl font-bold text-xs md:text-sm shadow-lg shadow-slate-800/10 transition-all flex items-center justify-center gap-2 focus:outline-none disabled:opacity-50"
+                  >
+                    {updatingSystem ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Syncing with Cloud...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4 text-emerald-400" />
+                        Force Re-sync & Re-pull Latest Code
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Guide for Client */}
+          <div className="bg-white p-6 md:p-7 rounded-[24px] border border-slate-200 shadow-sm space-y-4">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-emerald-500" />
+              Ghar Baithe Remote Update Kaise Kaam Karta Hai?
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">1</span>
+                <p className="font-bold text-slate-800">Developer Code Push</p>
+                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                  Aap ghar baithe jab bhi apne system se GitHub repository par naye features ya bug fixes push karenge.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">2</span>
+                <p className="font-bold text-slate-800">1-Click Update Button</p>
+                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                  Client apne ERP ke Settings me aakar bas &quot;Download &amp; Install Update&quot; button par click karega.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">3</span>
+                <p className="font-bold text-slate-800">Zero Downtime &amp; Safe</p>
+                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                  5-10 seconds me naya version update hokar page reload ho jayega. Database 100% safe rahega.
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
 
     </div>
   );
