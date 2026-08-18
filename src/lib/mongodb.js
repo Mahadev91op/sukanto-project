@@ -1,4 +1,12 @@
 import mongoose from "mongoose";
+import dns from "dns";
+
+// Windows / ISP DNS ke SRV query issue (querySrv ECONNREFUSED) ko fix karne ke liye Google/Cloudflare DNS use karein
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+} catch (e) {
+  // Ignore if running in environments that restrict dns.setServers
+}
 
 const MONGODB_URI = process.env.MONGODB_URI;
 

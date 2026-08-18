@@ -1,7 +1,14 @@
 import mongoose from "mongoose";
+import dns from "dns";
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+} catch (e) {
+  // Ignore if restricted
+}
 
 // Manually parse .env
 const envPath = path.resolve(process.cwd(), ".env");
